@@ -1,0 +1,5 @@
+#!/usr/bin/env ruby
+# Runs the web server with the Solid Queue supervisor inside Puma, so checks
+# run locally exactly as they do on the server.
+ENV["SOLID_QUEUE_IN_PUMA"] ||= "1"
+exec "./bin/rails", "server", *ARGV

@@ -1,0 +1,64 @@
+<%= form_with model: check, class: "form" do |form| %>
+  <% if check.errors.any? %>
+    <div class="form-errors" role="alert">
+      <p>Please fix the following:</p>
+      <ul>
+        <% check.errors.full_messages.each do |message| %>
+          <li><%= message %></li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <div class="panel">
+    <div class="form-grid">
+      <div class="field">
+        <%= form.label :name %>
+        <%= form.text_field :name, required: true, maxlength: 100, autofocus: check.new_record?, placeholder: "Acme shop" %>
+      </div>
+
+      <div class="field">
+        <%= form.label :url, "Address" %>
+        <%= form.url_field :url, required: true, maxlength: 2000, placeholder: "https://example.com", inputmode: "url", autocapitalize: "off", spellcheck: false %>
+      </div>
+    </div>
+
+    <fieldset class="form-section">
+      <legend>Optional</legend>
+
+      <div class="form-grid">
+        <div class="field">
+          <%= form.label :group_name, "Group" %>
+          <%= form.text_field :group_name, maxlength: 100, list: "group-names", placeholder: "A client or project" %>
+          <datalist id="group-names">
+            <% Check.group_names.each do |name| %>
+              <option value="<%= name %>"></option>
+            <% end %>
+          </datalist>
+        </div>
+
+        <div class="field">
+          <%= form.label :interval_minutes, "How often to check" %>
+          <%= form.select :interval_minutes, interval_options %>
+        </div>
+
+        <div class="field">
+          <%= form.label :required_phrase, "Text that must appear on the page" %>
+          <%= form.text_field :required_phrase, maxlength: 500, placeholder: "For example: Add to cart" %>
+          <p class="hint">If it's missing, the website counts as down, so a broken page doesn't pass as working. Matching is exact, including capital letters.</p>
+        </div>
+
+        <div class="field">
+          <%= form.label :failure_threshold, "Failed checks in a row before it counts as down" %>
+          <%= form.number_field :failure_threshold, min: 1, max: 10, step: 1, class: "narrow" %>
+          <p class="hint">After a failed check, Flatline checks again one minute later.</p>
+        </div>
+      </div>
+    </fieldset>
+  </div>
+
+  <div class="form-actions">
+    <%= form.submit check.new_record? ? "Start watching" : "Save changes", class: "button" %>
+    <%= link_to "Cancel", check.new_record? ? root_path : check_path(check), class: "button button-quiet" %>
+  </div>
+<% end %>

@@ -1,0 +1,24 @@
+<%# Locals: setting %>
+<% if setting.offline? %>
+  <p class="banner banner-offline" role="alert">
+    <strong>Flatline is offline.</strong>
+    It can't reach the internet itself, so failed checks aren't being counted against any website.
+    Offline since <%= format_time(setting.offline_since) %>.
+  </p>
+<% elsif setting.checking_stalled? %>
+  <p class="banner banner-stalled" role="alert">
+    <strong>Checking has stopped.</strong>
+    <% if (at = last_check_at) %>
+      The statuses below may be out of date. The last check ran <%= time_ago_tag(at) %>.
+    <% else %>
+      No checks have run. Is the job worker (flatline-jobs) running?
+    <% end %>
+  </p>
+<% end %>
+<p class="last-check">
+  <% if (at = last_check_at) %>
+    Last check ran <%= time_ago_tag(at) %>
+  <% else %>
+    No checks have run yet
+  <% end %>
+</p>

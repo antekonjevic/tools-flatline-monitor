@@ -1,0 +1,112 @@
+<% content_for :title, @check.name %>
+
+<div data-controller="refresh" data-refresh-seconds-value="30">
+  <p class="breadcrumb"><%= link_to "← Overview", root_path %></p>
+
+  <div class="page-head status-<%= @check.status %>">
+    <div>
+      <h1 class="check-title"><span class="status-dot" aria-hidden="true"></span> <%= @check.name %></h1>
+      <p class="check-meta">
+        <%= website_link(@check, class: "check-address") %>
+        <% if @check.group_name %>· <%= @check.group_name %><% end %>
+      </p>
+    </div>
+    <div class="actions">
+      <%= link_to "Edit", edit_check_path(@check), class: "button button-quiet" %>
+      <% if @check.paused? %>
+        <%= button_to "Resume", check_pause_path(@check), method: :delete, class: "button" %>
+      <% else %>
+        <%= button_to "Pause", check_pause_path(@check), class: "button button-quiet",
+              form: { data: { turbo_confirm: "Pause #{@check.name}? While paused it isn't checked and downtime doesn't count against it." } } %>
+      <% end %>
+      <%= button_to "Remove", check_path(@check), method: :delete, class: "button button-danger",
+            form: { data: { turbo_confirm: "Remove #{@check.name} and all of its history? This can't be undone." } } %>
+    </div>
+  </div>
+
+  <%= render "shared/system_status", setting: Setting.instance %>
+
+  <section class="panel status-panel">
+    <div class="status-summary">
+      <%= status_badge(@check) %>
+      <span class="status-summary-text"><%= status_with_duration(@check) %></span>
+    </div>
+    <% if @check.down? && (period = @check.current_down_period) %>
+      <p class="status-detail">Down since <%= format_time(period.started_at) %>: <%= period.reason %></p>
+    <% elsif @check.last_message && !@check.up? %>
+      <p class="status-detail"><%= @check.last_message %></p>
+    <% elsif @check.consecutive_failures.positive? %>
+      <p class="status-detail">The last check failed (<%= @check.last_message %>). Rechecking every minute; it counts as down after <%= pluralize(@check.failure_threshold, "failed check") %> in a row.</p>
+    <% end %>
+
+    <dl class="facts">
+      <div><dt>Last checked</dt><dd><%= time_ago_tag(@check.last_checked_at) %><% if @check.last_http_status %> · HTTP <%= @check.last_http_status %><% end %><% if @check.last_response_ms %> · <%= number_with_delimiter(@check.last_response_ms) %> ms<% end %></dd></div>
+      <div><dt>Checked</dt><dd><%= interval_options.to_h.invert.fetch(@check.interval_minutes).downcase %></dd></div>
+      <div><dt>Counts as down after</dt><dd><%= pluralize(@check.failure_threshold, "failed check") %> in a row</dd></div>
+      <div><dt>Required text</dt><dd><%= @check.required_phrase ? "“#{@check.required_phrase}”" : "None" %></dd></div>
+      <% if @check.cert_expires_at %>
+        <div><dt>Certificate expires</dt><dd><%= l(@check.cert_expires_at.to_date, format: :long) %></dd></div>
+      <% end %>
+    </dl>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Last <%= Check::BAR_DAYS %> days</h2>
+      <p class="uptime-big"><%= uptime_text(uptime_for(@check, @summaries)) %> <span>uptime</span></p>
+    </div>
+    <%= render "shared/bars", check: @check, summaries: @summaries.fetch(@check.id, {}) %>
+    <div class="bars-axis" aria-hidden="true"><span><%= Check::BAR_DAYS %> days ago</span><span>Today</span></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Downtime in the last 6 months</h2>
+      <% if @down_periods.any? %>
+        <p class="muted"><%= pluralize(@down_periods.size, "time") %> · <%= short_duration(@down_periods.sum(&:duration)) %> in total</p>
+      <% end %>
+    </div>
+    <% if @down_periods.any? %>
+      <div class="table-wrap">
+        <table class="table table-downtime">
+          <thead><tr><th>Went down</th><th>Came back</th><th>Down for</th><th>Reason</th></tr></thead>
+          <tbody>
+            <% @down_periods.each do |period| %>
+              <tr class="<%= "ongoing" if period.ongoing? %>">
+                <td data-label="Went down"><%= format_time(period.started_at) %></td>
+                <td data-label="Came back"><%= period.ongoing? ? "Still down" : format_time(period.ended_at) %></td>
+                <td data-label="Down for"><%= short_duration(period.duration) %></td>
+                <td data-label="Reason"><%= period.reason %></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    <% else %>
+      <p class="muted">No downtime recorded.</p>
+    <% end %>
+  </section>
+
+  <section class="panel">
+    <h2>Recent checks</h2>
+    <% if @results.any? %>
+      <div class="table-wrap">
+        <table class="table table-compact table-results">
+          <thead><tr><th>Time</th><th>Result</th><th>Response</th><th>Details</th></tr></thead>
+          <tbody>
+            <% @results.each do |result| %>
+              <tr>
+                <td><%= format_time(result.checked_at, :full) %></td>
+                <td><span class="badge badge-<%= result.outcome %>"><%= status_label(result.outcome) %></span></td>
+                <td><%= [ ("HTTP #{result.http_status}" if result.http_status), ("#{number_with_delimiter(result.response_ms)} ms" if result.response_ms) ].compact.join(" · ") %></td>
+                <td><%= result.message %></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    <% else %>
+      <p class="muted">No checks have finished yet.</p>
+    <% end %>
+  </section>
+</div>

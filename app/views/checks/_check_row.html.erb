@@ -1,0 +1,27 @@
+<%# Locals: check, summaries, show_group %>
+<li id="<%= dom_id(check) %>" class="check-row status-<%= check.status %>">
+  <%= link_to check_path(check), class: "check-row-link" do %>
+    <span class="check-identity">
+      <span class="status-dot" aria-hidden="true"></span>
+      <span class="check-names">
+        <strong class="check-name"><%= check.name %></strong>
+        <span class="check-url"><%= check.host_and_path %></span>
+      </span>
+    </span>
+    <span class="check-state">
+      <span class="sr-only"><%= status_label(check.status) %>.</span>
+      <span class="check-state-line"><%= status_with_duration(check) %></span>
+      <% if (reason = status_reason(check)) %>
+        <span class="check-reason"><%= reason %></span>
+      <% end %>
+      <% if show_group && check.group_name %>
+        <span class="check-reason"><%= check.group_name %></span>
+      <% end %>
+    </span>
+    <%= render "shared/bars", check: check, summaries: summaries.fetch(check.id, {}) %>
+    <span class="check-uptime">
+      <span class="uptime-value"><%= uptime_text(uptime_for(check, summaries)) %></span>
+      <span class="uptime-label"><%= Check::BAR_DAYS %> days</span>
+    </span>
+  <% end %>
+</li>

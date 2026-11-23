@@ -1,0 +1,18 @@
+<% content_for :title, "Sign in" %>
+
+<div class="sign-in">
+  <h1 class="brand brand-large">
+    <%= render "shared/logo" %>
+    <span>Flatline</span>
+  </h1>
+  <%= form_with url: session_path, class: "form panel" do |form| %>
+    <div class="field">
+      <%= form.label :password %>
+      <%= form.password_field :password, required: true, autofocus: true, autocomplete: "current-password" %>
+    </div>
+    <%= form.submit "Sign in", class: "button button-wide" %>
+  <% end %>
+  <div class="sign-in-foot">
+    <%= render "shared/theme_switch" %>
+  </div>
+</div>

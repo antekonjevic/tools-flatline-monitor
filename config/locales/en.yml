@@ -1,0 +1,17 @@
+en:
+  date:
+    formats:
+      bar: "%a %b %-d"
+  time:
+    formats:
+      full: "%b %-d %Y, %H:%M:%S %Z"
+      history: "%b %-d %Y, %H:%M"
+      clock: "%H:%M"
+  activerecord:
+    attributes:
+      check:
+        url: "Address"
+        group_name: "Group"
+        interval_minutes: "Check interval"
+        required_phrase: "Required text"
+        failure_threshold: "Failed checks before down"

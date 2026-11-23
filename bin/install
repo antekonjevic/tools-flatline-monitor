@@ -1,0 +1,218 @@
+#!/usr/bin/env bash
+# First-run setup for a fresh Ubuntu 24.04 server. Running it again is safe:
+# it only asks for what isn't set up yet.
+#
+#   git clone https://github.com/<you>/flatline.git && cd flatline
+#   sudo bin/install
+set -euo pipefail
+
+if [[ $EUID -ne 0 ]]; then
+  echo "Run this with sudo: sudo bin/install" >&2
+  exit 1
+fi
+
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+app=/home/deploy/flatline
+env_file="$app/shared/flatline.env"
+mise_bin=/home/deploy/.local/bin/mise
+ruby_version="$(cat "$repo_dir/.ruby-version")"
+
+step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
+note() { printf '    %s\n' "$*"; }
+as_deploy() { sudo -u deploy -H bash -c "cd ~ && $1"; }
+
+# Reads KEY's value from the configuration file.
+get_env() {
+  [[ -f "$env_file" ]] || return 0
+  grep -E "^$1=" "$env_file" | tail -n 1 | cut -d= -f2- | sed -e "s/^'//" -e "s/'$//"
+}
+
+# Writes KEY='value' to the configuration file, replacing any old line.
+set_env() {
+  local tmp
+  tmp="$(mktemp)"
+  grep -vE "^$1=" "$env_file" > "$tmp" || true
+  printf "%s='%s'\n" "$1" "$2" >> "$tmp"
+  install -o deploy -g deploy -m 600 "$tmp" "$env_file"
+  rm -f "$tmp"
+}
+
+# shellcheck disable=SC1091
+. /etc/os-release
+if [[ "${ID:-}" != ubuntu || "${VERSION_ID:-}" != "24.04" ]]; then
+  echo "Warning: this script is written for Ubuntu 24.04; this is ${PRETTY_NAME:-unknown}." >&2
+fi
+
+repo_url="$(git -C "$repo_dir" remote get-url origin)"
+case "$repo_url" in
+  git@github.com:*) repo_url="https://github.com/${repo_url#git@github.com:}" ;;
+esac
+commit="$(git -C "$repo_dir" rev-parse HEAD)"
+
+step "Installing system packages"
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -q
+apt-get install -y -q \
+  build-essential git curl ca-certificates gnupg pkg-config \
+  sqlite3 libsqlite3-dev libssl-dev libyaml-dev zlib1g-dev libffi-dev libreadline-dev libgmp-dev \
+  ufw unattended-upgrades debian-keyring debian-archive-keyring apt-transport-https
+
+step "Installing Caddy"
+if ! command -v caddy > /dev/null; then
+  curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/gpg.key | gpg --dearmor --yes -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt -o /etc/apt/sources.list.d/caddy-stable.list
+  apt-get update -q
+  apt-get install -y -q caddy
+else
+  note "Already installed."
+fi
+
+step "Creating the deploy user and folders"
+id deploy > /dev/null 2>&1 || useradd --create-home --shell /bin/bash deploy
+install -d -o deploy -g deploy -m 755 "$app" "$app/releases" "$app/shared"
+install -d -o deploy -g deploy -m 700 "$app/shared/storage" /home/deploy/.ssh
+[[ -f /home/deploy/.ssh/authorized_keys ]] || install -o deploy -g deploy -m 600 /dev/null /home/deploy/.ssh/authorized_keys
+
+step "Installing Ruby $ruby_version with mise (the first time this compiles Ruby and takes a few minutes)"
+[[ -x "$mise_bin" ]] || as_deploy "curl -fsSL https://mise.run | sh"
+as_deploy "$mise_bin settings add idiomatic_version_file_enable_tools ruby 2>/dev/null || $mise_bin settings set idiomatic_version_file_enable_tools ruby"
+as_deploy "$mise_bin use --global --yes ruby@$ruby_version"
+
+step "Configuration ($env_file)"
+[[ -f "$env_file" ]] || install -o deploy -g deploy -m 600 /dev/null "$env_file"
+
+host="$(get_env FLATLINE_HOST)"
+if [[ -z "$host" ]]; then
+  read -r -p "    Domain Flatline will run on (for example status.example.com): " host
+  [[ -n "$host" ]] || { echo "A domain is needed." >&2; exit 1; }
+  set_env FLATLINE_HOST "$host"
+fi
+note "Domain: $host"
+
+if [[ -z "$(get_env SECRET_KEY_BASE)" ]]; then
+  set_env SECRET_KEY_BASE "$(openssl rand -hex 64)"
+  note "Generated SECRET_KEY_BASE."
+fi
+
+if [[ -z "$(get_env FLATLINE_TIME_ZONE)" ]]; then
+  read -r -p "    Time zone for showing times, e.g. Europe/Amsterdam [UTC]: " zone
+  set_env FLATLINE_TIME_ZONE "${zone:-UTC}"
+fi
+note "Time zone: $(get_env FLATLINE_TIME_ZONE)"
+
+step "Allowing the deploy user to restart Flatline"
+sudoers=/etc/sudoers.d/flatline
+cat > "$sudoers.tmp" <<'SUDOERS'
+deploy ALL=(root) NOPASSWD: /usr/bin/systemctl restart flatline-web flatline-jobs
+SUDOERS
+visudo -cf "$sudoers.tmp" > /dev/null
+install -m 440 "$sudoers.tmp" "$sudoers"
+rm -f "$sudoers.tmp"
+
+step "Installing the systemd services"
+install -m 644 "$repo_dir/config/server/flatline-web.service" /etc/systemd/system/flatline-web.service
+install -m 644 "$repo_dir/config/server/flatline-jobs.service" /etc/systemd/system/flatline-jobs.service
+systemctl daemon-reload
+systemctl enable flatline-web flatline-jobs > /dev/null
+
+step "Configuring Caddy"
+sed "s/FLATLINE_HOST/$host/" "$repo_dir/config/server/Caddyfile" > /etc/caddy/Caddyfile
+caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile 2>&1 | tail -n 1
+systemctl enable caddy > /dev/null
+systemctl reload-or-restart caddy
+
+step "Deploying $commit"
+sudo -u deploy -H bash -s -- "$commit" "$repo_url" < "$repo_dir/bin/deploy"
+
+step "Owner password"
+if [[ -z "$(get_env FLATLINE_PASSWORD_DIGEST)" ]]; then
+  while true; do
+    read -r -s -p "    Choose the owner password (at least 12 characters): " password; echo
+    read -r -s -p "    Repeat it: " password_again; echo
+    if [[ "$password" != "$password_again" ]]; then note "They don't match. Try again."
+    elif [[ ${#password} -lt 12 ]]; then note "Too short. Try again."
+    else break
+    fi
+  done
+  digest="$(sudo -u deploy -H env FLATLINE_PASSWORD="$password" RAILS_ENV=production \
+    bash -c "cd $app/current && $mise_bin exec -- bin/rails flatline:password")"
+  unset password password_again
+  set_env FLATLINE_PASSWORD_DIGEST "$digest"
+  systemctl restart flatline-web
+  note "Saved. To change it later, see \"Resetting the password\" in the README."
+else
+  note "Already set."
+fi
+
+step "Firewall: SSH, HTTP and HTTPS only"
+ufw allow OpenSSH > /dev/null
+ufw allow 80/tcp > /dev/null
+ufw allow 443 > /dev/null
+ufw --force enable > /dev/null
+note "$(ufw status | head -n 1)"
+
+step "SSH keys for GitHub Actions"
+if [[ ! -s /home/deploy/.ssh/authorized_keys ]]; then
+  note "Paste the public key GitHub Actions will deploy with (see the README),"
+  read -r -p "    or press Enter to add it later: " public_key
+  if [[ -n "$public_key" ]]; then
+    printf '%s\n' "$public_key" >> /home/deploy/.ssh/authorized_keys
+    note "Added."
+  fi
+else
+  note "The deploy user already has a key."
+fi
+
+step "SSH: keys only"
+has_keys=false
+for keys in /root/.ssh/authorized_keys "/home/${SUDO_USER:-root}/.ssh/authorized_keys"; do
+  [[ -s "$keys" ]] && has_keys=true
+done
+if [[ "$has_keys" == true ]]; then
+  cat > /etc/ssh/sshd_config.d/10-flatline.conf <<'SSHD'
+# Written by Flatline's bin/install.
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin prohibit-password
+SSHD
+  sshd -t
+  systemctl reload ssh
+  note "Password logins are off."
+else
+  note "Skipped: no SSH key found for root or $SUDO_USER, so turning off passwords would lock you out."
+  note "Add your key to ~/.ssh/authorized_keys and run this script again."
+fi
+
+step "Automatic security updates"
+cat > /etc/apt/apt.conf.d/20auto-upgrades <<'APT'
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+APT
+systemctl enable --now unattended-upgrades > /dev/null
+note "On."
+
+step "Logs"
+install -d /etc/systemd/journald.conf.d
+cat > /etc/systemd/journald.conf.d/flatline.conf <<'JOURNAL'
+[Journal]
+SystemMaxUse=1G
+JOURNAL
+systemctl restart systemd-journald
+note "In the system journal: journalctl -u flatline-web -u flatline-jobs"
+
+host_key="$(cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub)"
+step "Done"
+cat <<DONE
+    Flatline is running at https://$host (once DNS points here).
+
+    For deploys from GitHub Actions, add these repository secrets:
+      DEPLOY_HOST         $host (or this server's IP address)
+      DEPLOY_USER         deploy
+      DEPLOY_KNOWN_HOSTS  $host $host_key
+      DEPLOY_SSH_KEY      the private half of the key you added above
+
+    If DEPLOY_HOST is an IP address, use the same address in DEPLOY_KNOWN_HOSTS.
+
+    Then re-run the latest CI run on main in your repo's Actions tab to check
+    that deploys from GitHub work. After that, every push to main deploys.
+DONE

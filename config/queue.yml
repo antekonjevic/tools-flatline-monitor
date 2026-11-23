@@ -1,0 +1,20 @@
+default: &default
+  dispatchers:
+    - polling_interval: 1
+      batch_size: 500
+  workers:
+    # Checks spend almost all of their time waiting on the network, so a
+    # handful of threads keeps up with many websites.
+    - queues: "*"
+      threads: 6
+      processes: <%= ENV.fetch("JOB_CONCURRENCY", 1) %>
+      polling_interval: 1
+
+development:
+  <<: *default
+
+test:
+  <<: *default
+
+production:
+  <<: *default

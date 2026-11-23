@@ -1,0 +1,26 @@
+# Installed to /etc/systemd/system/ by bin/install.
+# The Solid Queue worker that runs the checks. On stop it finishes the checks
+# it is running (up to 40 seconds, see config/application.rb) before exiting.
+[Unit]
+Description=Flatline checks (Solid Queue)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=deploy
+Group=deploy
+WorkingDirectory=/home/deploy/flatline/current
+EnvironmentFile=/home/deploy/flatline/shared/flatline.env
+Environment=RAILS_ENV=production
+ExecStart=/home/deploy/.local/bin/mise exec -- bin/jobs
+Restart=always
+RestartSec=2
+TimeoutStopSec=60
+SyslogIdentifier=flatline-jobs
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,34 @@
+<div data-controller="refresh" data-refresh-seconds-value="60">
+  <div class="board-head">
+    <h1 class="brand board-title">
+      <%= render "shared/logo" %>
+      <span>Status board</span>
+    </h1>
+    <%= render "shared/theme_switch" %>
+    <% if @checks.any? %>
+      <p class="totals"><%= totals_line(@checks) %></p>
+    <% end %>
+  </div>
+
+  <%= render "shared/system_status", setting: Setting.instance %>
+
+  <% if @checks.empty? %>
+    <p class="muted">No websites are being watched yet.</p>
+  <% else %>
+    <ul class="board-list">
+      <% @checks.each do |check| %>
+        <li class="board-row status-<%= check.status %>">
+          <div class="board-row-head">
+            <span class="status-dot" aria-hidden="true"></span>
+            <span class="check-names">
+              <strong class="check-name"><%= check.name %></strong>
+              <%= website_link(check, check.host_and_path, class: "check-url") %>
+            </span>
+            <span class="board-status"><%= status_label(check.status) %></span>
+          </div>
+          <%= render "shared/bars", check: check, summaries: @summaries.fetch(check.id, {}) %>
+        </li>
+      <% end %>
+    </ul>
+  <% end %>
+</div>

@@ -1,0 +1,9 @@
+<% content_for :title, "Edit #{@check.name}" %>
+
+<p class="breadcrumb"><%= link_to "← #{@check.name}", check_path(@check) %></p>
+
+<header class="page-header">
+  <h1>Edit website</h1>
+</header>
+
+<%= render "form", check: @check %>

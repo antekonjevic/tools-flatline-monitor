@@ -1,0 +1,9 @@
+<%# Locals: check, summaries (day => DailySummary). One SVG, so 90 thin bars stay evenly spaced at any width. %>
+<% uptime = DailySummary.uptime(summaries.values) %>
+<svg class="bars" viewBox="0 0 <%= Check::BAR_DAYS * 4 %> 10" preserveAspectRatio="none" role="img"
+     aria-label="Last <%= Check::BAR_DAYS %> days: <%= uptime ? "#{uptime_text(uptime)} uptime" : "no data yet" %>">
+  <% DailySummary.bar_days.each_with_index do |day, index| %>
+    <% summary = summaries[day] %>
+    <rect class="bar-<%= summary&.bar_status || "none" %>" x="<%= index * 4 %>" y="0" width="3" height="10"><title><%= bar_title(day, summary) %></title></rect>
+  <% end %>
+</svg>

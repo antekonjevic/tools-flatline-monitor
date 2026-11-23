@@ -1,0 +1,55 @@
+<% content_for :title, "Overview" %>
+
+<div data-controller="refresh" data-refresh-seconds-value="30">
+  <div class="page-head">
+    <div>
+      <h1>Overview</h1>
+      <% if @checks.any? %>
+        <p class="totals"><%= totals_line(@checks) %></p>
+      <% end %>
+    </div>
+    <%= link_to "Add website", new_check_path, class: "button" %>
+  </div>
+
+  <%= render "shared/system_status", setting: Setting.instance %>
+
+  <% if @checks.empty? %>
+    <div class="empty">
+      <h2>Nothing is being watched yet</h2>
+      <p>Add a website and Flatline starts checking it straight away.</p>
+      <div class="empty-actions">
+        <%= link_to "Add your first website", new_check_path, class: "button" %>
+        <%= link_to "Import from a file", websites_file_path, class: "button button-quiet" %>
+      </div>
+    </div>
+  <% else %>
+    <% down, others = @checks.partition(&:down?) %>
+
+    <% if down.any? %>
+      <section class="check-group" aria-labelledby="group-down">
+        <h2 id="group-down" class="group-title group-title-down">Down</h2>
+        <ul class="check-list">
+          <%= render partial: "checks/check_row", collection: down, as: :check, locals: { summaries: @summaries, show_group: true } %>
+        </ul>
+      </section>
+    <% end %>
+
+    <% others.group_by(&:group_name).each do |group_name, checks| %>
+      <section class="check-group" aria-label="<%= group_name || "Ungrouped" %>">
+        <% if group_name || others.any?(&:group_name) %>
+          <h2 class="group-title"><%= group_name || "No group" %></h2>
+        <% end %>
+        <ul class="check-list">
+          <%= render partial: "checks/check_row", collection: checks, as: :check, locals: { summaries: @summaries, show_group: false } %>
+        </ul>
+      </section>
+    <% end %>
+
+    <div class="legend" aria-hidden="true">
+      <span><span class="bar bar-up"></span> No downtime</span>
+      <span><span class="bar bar-warning"></span> Warning</span>
+      <span><span class="bar bar-down"></span> Downtime</span>
+      <span><span class="bar bar-none"></span> No data or paused</span>
+    </div>
+  <% end %>
+</div>

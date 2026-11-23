@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html <%= tag.attributes(lang: "en", data: { theme: forced_theme }) %>>
+  <head>
+    <title><%= [ content_for(:title), "Flatline" ].compact.join(" · ") %></title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="color-scheme" content="<%= forced_theme || "light dark" %>">
+    <meta name="application-name" content="Flatline">
+    <%= csrf_meta_tags %>
+    <%= csp_meta_tag %>
+    <%= turbo_refreshes_with method: :morph, scroll: :preserve %>
+    <%= yield :head %>
+
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <link rel="icon" href="/icon.png" type="image/png">
+    <link rel="apple-touch-icon" href="/icon.png">
+
+    <%= stylesheet_link_tag :app, "data-turbo-track": "reload" %>
+    <%= javascript_importmap_tags %>
+  </head>
+
+  <body>
+    <% if signed_in? %>
+      <header class="site-header">
+        <div class="container site-header-inner">
+          <%= link_to root_path, class: "brand" do %>
+            <%= render "shared/logo" %>
+            <span>Flatline</span>
+          <% end %>
+          <nav class="site-nav" aria-label="Main">
+            <%= nav_link "Overview", root_path %>
+            <%= nav_link "Add website", new_check_path %>
+            <%= nav_link "Import & export", websites_file_path %>
+            <%= nav_link "Board", board_link_path %>
+          </nav>
+          <div class="site-tools">
+            <%= render "shared/theme_switch" %>
+            <%= button_to "Sign out", session_path, method: :delete, class: "link-button" %>
+          </div>
+        </div>
+      </header>
+    <% end %>
+
+    <main class="container">
+      <% flash.each do |type, message| %>
+        <p class="flash flash-<%= type %>" role="<%= type == "alert" ? "alert" : "status" %>"><%= message %></p>
+      <% end %>
+      <%= yield %>
+    </main>
+  </body>
+</html>

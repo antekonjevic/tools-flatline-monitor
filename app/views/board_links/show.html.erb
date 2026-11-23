@@ -1,0 +1,24 @@
+<% content_for :title, "Board" %>
+
+<header class="page-header">
+  <h1>Shareable board</h1>
+  <p class="lede">Anyone with this link can see every website's name, address, current status and 90-day bars, without a password. Nothing can be changed from the board.</p>
+</header>
+
+<section class="panel">
+  <label for="board-url" class="label">Secret link</label>
+  <div class="copy-field" data-controller="copy">
+    <input id="board-url" type="text" readonly value="<%= board_url(token: @setting.board_token) %>" data-copy-target="source">
+    <button type="button" class="button" data-action="copy#copy" data-copy-target="button">Copy</button>
+    <%= link_to "Open board", board_path(token: @setting.board_token), class: "button button-quiet", target: "_blank", rel: "noopener noreferrer" %>
+  </div>
+</section>
+
+<section class="panel panel-row">
+  <div>
+    <h2>Replace the link</h2>
+    <p>If the link ends up with someone who shouldn't have it, replace it. The old link stops working immediately, so update any screens or bookmarks that use it.</p>
+  </div>
+  <%= button_to "Replace link", board_link_path, method: :patch, class: "button button-danger",
+        form: { data: { turbo_confirm: "Replace the board link? The current link will stop working immediately." } } %>
+</section>

@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Points `current` at the release before it and restarts both services.
+# Run on the server as the deploy user:  ~/flatline/current/bin/rollback
+#
+# Database migrations are not undone. Releases older than the last five are
+# deleted on each deploy, so you can go back at most four times.
+set -euo pipefail
+
+app=/home/deploy/flatline
+current="$(readlink -f "$app/current")"
+previous="$(find "$app/releases" -mindepth 1 -maxdepth 1 -type d | sort | awk -v cur="$current" '$0 == cur { print prev; exit } { prev = $0 }')"
+
+if [[ -z "$previous" ]]; then
+  echo "There is no release before $(basename "$current") to roll back to." >&2
+  exit 1
+fi
+
+echo "Rolling back from $(basename "$current") to $(basename "$previous")"
+ln -sfn "$previous" "$app/current.next"
+mv -Tf "$app/current.next" "$app/current"
+sudo systemctl restart flatline-web flatline-jobs
+echo "Done. $(basename "$previous") is live."

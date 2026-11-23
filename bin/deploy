@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# Deploys one commit on the server. Runs as the deploy user:
+#
+#   bin/deploy <commit-sha> <public-repo-url>
+#
+# GitHub Actions pipes this file over SSH (see .github/workflows/ci.yml), and
+# bin/install uses it for the first deploy. If any step fails, the previous
+# release stays live.
+set -euo pipefail
+
+sha="${1:?usage: bin/deploy <commit-sha> <repo-url>}"
+repo="${2:?usage: bin/deploy <commit-sha> <repo-url>}"
+
+app=/home/deploy/flatline
+keep=5
+export PATH="$HOME/.local/bin:$PATH"
+export RAILS_ENV=production
+
+log() { printf '\n==> %s\n' "$*"; }
+
+# One deploy at a time.
+exec 9>"$app/deploy.lock"
+flock -w 900 9 || { echo "Another deploy is still running." >&2; exit 1; }
+
+release="$app/releases/$(date -u +%Y%m%d%H%M%S)"
+previous="$(readlink -f "$app/current" 2>/dev/null || true)"
+switched=false
+
+on_error() {
+  if [[ "$switched" == false ]]; then
+    echo "Deploy failed before going live; $previous is still live." >&2
+    rm -rf "$release"
+  fi
+}
+trap on_error ERR
+
+log "Fetching $sha"
+mkdir -p "$release"
+git -C "$release" init -q
+git -C "$release" fetch -q --depth 1 "$repo" "$sha"
+git -C "$release" -c advice.detachedHead=false checkout -q FETCH_HEAD
+rm -rf "$release/.git"
+
+log "Linking shared storage and configuration"
+rm -rf "$release/storage"
+ln -s "$app/shared/storage" "$release/storage"
+ln -s "$app/shared/flatline.env" "$release/flatline.env"
+mkdir -p "$release/tmp/pids" "$release/log"
+
+cd "$release"
+set -a
+# shellcheck disable=SC1091
+. ./flatline.env
+set +a
+
+log "Installing Ruby $(cat .ruby-version) (if needed) and gems"
+mise install --yes ruby
+mise exec -- bundle config set --local deployment true
+mise exec -- bundle config set --local path "$app/shared/bundle"
+mise exec -- bundle config set --local without "development test"
+mise exec -- bundle install --quiet --jobs 4
+
+log "Precompiling assets"
+mise exec -- bin/rails assets:precompile
+
+log "Migrating databases"
+mise exec -- bin/rails db:prepare
+
+log "Going live"
+ln -sfn "$release" "$app/current.next"
+mv -Tf "$app/current.next" "$app/current"
+switched=true
+sudo systemctl restart flatline-web flatline-jobs
+
+log "Waiting for the app to answer"
+healthy=false
+for _ in $(seq 1 30); do
+  if curl -fsS -o /dev/null http://127.0.0.1:3000/up; then healthy=true; break; fi
+  sleep 1
+done
+
+if [[ "$healthy" != true ]]; then
+  echo "The new release didn't start; going back to $previous." >&2
+  if [[ -n "$previous" && -d "$previous" ]]; then
+    ln -sfn "$previous" "$app/current.next"
+    mv -Tf "$app/current.next" "$app/current"
+    sudo systemctl restart flatline-web flatline-jobs
+  fi
+  exit 1
+fi
+
+log "Removing old releases (keeping $keep)"
+current="$(readlink -f "$app/current")"
+find "$app/releases" -mindepth 1 -maxdepth 1 -type d | sort -r | tail -n +$((keep + 1)) | while read -r old; do
+  [[ "$old" == "$current" ]] || rm -rf "$old"
+done
+
+log "Deployed $sha"

@@ -1,0 +1,54 @@
+<% content_for :title, "Import & export" %>
+
+<header class="page-header">
+  <h1>Import & export</h1>
+  <p class="lede">Move your websites' settings in and out of Flatline as a JSON file.</p>
+</header>
+
+<div class="panel-grid">
+  <section class="panel">
+    <h2>Export</h2>
+    <p>Download every website's settings as a JSON file, as a backup or to move them to another copy of Flatline. It includes each website's name, address, group, check interval, required text, failed checks before down, and whether it's paused. History and the board link aren't included.</p>
+    <div class="panel-action">
+      <% if @count.positive? %>
+        <%= link_to "Download #{pluralize(@count, "website")}", websites_file_path(format: :json), class: "button", data: { turbo: false } %>
+      <% else %>
+        <p class="muted">There are no websites to export yet.</p>
+      <% end %>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Import</h2>
+    <ul class="plain-list">
+      <li>Websites are matched by address. A website already in Flatline gets the settings from the file.</li>
+      <li>Websites that are new are added and checked straight away.</li>
+      <li>Websites that aren't in the file are left as they are. Nothing is removed.</li>
+      <li>If anything in the file is wrong, nothing is changed.</li>
+    </ul>
+
+    <% if @result&.errors&.any? %>
+      <div class="form-errors" role="alert">
+        <p>Nothing was imported. Please fix the file and try again:</p>
+        <ul>
+          <% @result.errors.first(20).each do |message| %>
+            <li><%= message %></li>
+          <% end %>
+          <% if @result.errors.size > 20 %>
+            <li>…and <%= pluralize(@result.errors.size - 20, "more problem") %></li>
+          <% end %>
+        </ul>
+      </div>
+    <% end %>
+
+    <p class="hint">The file uses the same format as an export. Only <code>name</code> and <code>url</code> are needed for a new website; anything left out keeps its current value, or the default for a new website.</p>
+
+    <%= form_with url: websites_file_path, multipart: true, class: "panel-action" do |form| %>
+      <div class="file-field">
+        <%= form.label :file, "File to import", class: "sr-only" %>
+        <%= form.file_field :file, accept: ".json,application/json", required: true %>
+        <%= form.submit "Import", class: "button" %>
+      </div>
+    <% end %>
+  </section>
+</div>

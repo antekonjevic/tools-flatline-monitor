@@ -1,0 +1,24 @@
+# Installed to /etc/systemd/system/ by bin/install.
+[Unit]
+Description=Flatline web server (Puma)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=deploy
+Group=deploy
+WorkingDirectory=/home/deploy/flatline/current
+EnvironmentFile=/home/deploy/flatline/shared/flatline.env
+Environment=RAILS_ENV=production
+ExecStart=/home/deploy/.local/bin/mise exec -- bundle exec puma -C config/puma.rb
+Restart=always
+RestartSec=2
+TimeoutStopSec=30
+SyslogIdentifier=flatline-web
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

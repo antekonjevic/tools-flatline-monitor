@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html <%= tag.attributes(lang: "en", data: { theme: forced_theme }) %>>
+  <head>
+    <title>Status board · Flatline</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="robots" content="noindex, nofollow, noarchive">
+    <meta name="referrer" content="no-referrer">
+    <meta name="color-scheme" content="<%= forced_theme || "light dark" %>">
+    <%= csp_meta_tag %>
+    <%= turbo_refreshes_with method: :morph, scroll: :preserve %>
+
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <link rel="icon" href="/icon.png" type="image/png">
+
+    <%= stylesheet_link_tag :app, "data-turbo-track": "reload" %>
+    <%= javascript_importmap_tags %>
+  </head>
+
+  <body class="board-body">
+    <main class="container">
+      <%= yield %>
+    </main>
+  </body>
+</html>
