@@ -23,7 +23,7 @@ Built with Rails 8.1, SQLite and Solid Queue. No Node and no build step.
 
 ## Run your own Flatline
 
-You need a GitHub account, a fresh **Ubuntu 24.04** server you can reach over SSH, and a (sub)domain whose DNS you control. It takes about 20 minutes, most of it the install compiling Ruby. Every push to your fork's `main` then deploys to your server.
+You need a GitHub account, a fresh **Ubuntu 24.04 or 26.04 LTS** (or **Fedora**) server you can reach over SSH, and a (sub)domain whose DNS you control. It takes about 20 minutes, most of it the install compiling Ruby. Every push to your fork's `main` then deploys to your server.
 
 ### 1. Fork this repo and turn on Actions
 
@@ -50,12 +50,12 @@ You'll paste the public half (`flatline_deploy.pub`) into the install, and the p
 ### 5. Install on the server
 
 ```sh
-git clone https://github.com/<you>/flatline.git
-cd flatline
+git clone https://github.com/<you>/tools-flatline-monitor.git
+cd tools-flatline-monitor
 sudo bin/install
 ```
 
-It asks for:
+Logged in as root, run `bin/install` without `sudo`. It asks for:
 
 | Prompt | Answer |
 |---|---|
@@ -65,6 +65,8 @@ It asks for:
 | Deploy key | The contents of `flatline_deploy.pub` |
 
 Then it installs system packages, [Caddy](https://caddyserver.com) and Ruby (through [mise](https://mise.jdx.dev)); creates a `deploy` user; writes the configuration file, the Caddy config and two systemd services (`flatline-web` and `flatline-jobs`); deploys the current commit; and lets only SSH, HTTP and HTTPS through the firewall, turns off SSH passwords and turns on automatic security updates. If something fails, fix it and run it again: it only asks for what's missing.
+
+It uses each system's own tools: `apt`, `ufw` and `unattended-upgrades` on Ubuntu; `dnf`, `firewalld` and `dnf-automatic` on Fedora. On Fedora, SELinux stays on: the install only allows Caddy to connect to the app (`httpd_can_network_connect`), and it closes the Cockpit web console that Fedora Server opens by default.
 
 ### 6. Add the deploy secrets to your fork
 

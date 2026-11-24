@@ -1,4 +1,9 @@
 # Installed to /etc/systemd/system/ by bin/install.
+#
+# The service starts through bash, which moves into the app and reads the
+# configuration itself, rather than through WorkingDirectory= and
+# EnvironmentFile=. On SELinux systems (Fedora), systemd isn't allowed to read
+# files in a home folder, so those two would fail there.
 [Unit]
 Description=Flatline web server (Puma)
 After=network-online.target
@@ -8,10 +13,8 @@ Wants=network-online.target
 Type=simple
 User=deploy
 Group=deploy
-WorkingDirectory=/home/deploy/flatline/current
-EnvironmentFile=/home/deploy/flatline/shared/flatline.env
 Environment=RAILS_ENV=production
-ExecStart=/home/deploy/.local/bin/mise exec -- bundle exec puma -C config/puma.rb
+ExecStart=/usr/bin/bash -c 'cd /home/deploy/flatline/current && set -a && . /home/deploy/flatline/shared/flatline.env && set +a && exec /home/deploy/.local/bin/mise exec -- bundle exec puma -C config/puma.rb'
 Restart=always
 RestartSec=2
 TimeoutStopSec=30

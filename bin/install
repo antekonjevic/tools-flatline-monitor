@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# First-run setup for a fresh Ubuntu 24.04 server. Running it again is safe:
-# it only asks for what isn't set up yet.
+# First-run setup for a fresh Ubuntu (24.04 or 26.04 LTS) or Fedora server.
+# Running it again is safe: it only asks for what isn't set up yet.
 #
-#   git clone https://github.com/<you>/flatline.git && cd flatline
+#   git clone https://github.com/<you>/tools-flatline-monitor.git && cd tools-flatline-monitor
 #   sudo bin/install
 set -euo pipefail
 
@@ -37,11 +37,18 @@ set_env() {
   rm -f "$tmp"
 }
 
+# Two families of systems are supported: Debian-like (Ubuntu, Debian: apt,
+# ufw, unattended-upgrades) and Fedora (dnf, firewalld, dnf-automatic, SELinux).
 # shellcheck disable=SC1091
 . /etc/os-release
-if [[ "${ID:-}" != ubuntu || "${VERSION_ID:-}" != "24.04" ]]; then
-  echo "Warning: this script is written for Ubuntu 24.04; this is ${PRETTY_NAME:-unknown}." >&2
-fi
+case " ${ID:-} ${ID_LIKE:-} " in
+  *" fedora "*) family=fedora ;;
+  *" ubuntu "* | *" debian "*) family=debian ;;
+  *)
+    echo "This script supports Ubuntu, Debian and Fedora; this is ${PRETTY_NAME:-an unknown system}." >&2
+    exit 1
+    ;;
+esac
 
 repo_url="$(git -C "$repo_dir" remote get-url origin)"
 case "$repo_url" in
@@ -49,23 +56,30 @@ case "$repo_url" in
 esac
 commit="$(git -C "$repo_dir" rev-parse HEAD)"
 
-step "Installing system packages"
-export DEBIAN_FRONTEND=noninteractive
-apt-get update -q
-apt-get install -y -q \
-  build-essential git curl ca-certificates gnupg pkg-config \
-  sqlite3 libsqlite3-dev libssl-dev libyaml-dev zlib1g-dev libffi-dev libreadline-dev libgmp-dev \
-  ufw unattended-upgrades debian-keyring debian-archive-keyring apt-transport-https
-
-step "Installing Caddy"
-if ! command -v caddy > /dev/null; then
-  curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/gpg.key | gpg --dearmor --yes -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-  curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt -o /etc/apt/sources.list.d/caddy-stable.list
+step "Installing system packages and Caddy (${PRETTY_NAME:-$ID})"
+if [[ "$family" == debian ]]; then
+  export DEBIAN_FRONTEND=noninteractive
   apt-get update -q
-  apt-get install -y -q caddy
+  apt-get install -y -q \
+    build-essential git curl ca-certificates gnupg pkg-config openssl \
+    sqlite3 libsqlite3-dev libssl-dev libyaml-dev zlib1g-dev libffi-dev libreadline-dev libgmp-dev \
+    ufw unattended-upgrades
+
+  # Caddy's own repository; Ubuntu's package lags behind.
+  if ! command -v caddy > /dev/null; then
+    curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/gpg.key | gpg --dearmor --yes -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+    curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt -o /etc/apt/sources.list.d/caddy-stable.list
+    apt-get update -q
+    apt-get install -y -q caddy
+  fi
 else
-  note "Already installed."
+  # Fedora packages Caddy itself.
+  dnf install -y -q \
+    gcc gcc-c++ make patch bzip2 tar xz git curl ca-certificates openssl pkgconf-pkg-config \
+    sqlite sqlite-devel openssl-devel libyaml-devel zlib-devel libffi-devel readline-devel gmp-devel \
+    firewalld dnf-automatic caddy
 fi
+note "Caddy $(caddy version | cut -d' ' -f1)"
 
 step "Creating the deploy user and folders"
 id deploy > /dev/null 2>&1 || useradd --create-home --shell /bin/bash deploy
@@ -115,6 +129,36 @@ install -m 644 "$repo_dir/config/server/flatline-jobs.service" /etc/systemd/syst
 systemctl daemon-reload
 systemctl enable flatline-web flatline-jobs > /dev/null
 
+# Before Caddy is configured, so ports 80 and 443 are open when it asks Let's
+# Encrypt for a certificate.
+step "Firewall: SSH, HTTP and HTTPS only"
+if [[ "$family" == debian ]]; then
+  ufw allow OpenSSH > /dev/null
+  ufw allow 80/tcp > /dev/null
+  ufw allow 443 > /dev/null
+  ufw --force enable > /dev/null
+  note "$(ufw status | head -n 1)"
+else
+  systemctl enable --now firewalld > /dev/null 2>&1
+  zone="$(firewall-cmd --get-default-zone)"
+  for service in ssh http https; do
+    firewall-cmd -q --permanent --zone="$zone" --add-service="$service"
+  done
+  firewall-cmd -q --permanent --zone="$zone" --add-port=443/udp
+  # Fedora Server also opens its Cockpit web console (port 9090) to everyone.
+  firewall-cmd -q --permanent --zone="$zone" --remove-service=cockpit 2> /dev/null || true
+  firewall-cmd -q --reload
+  note "firewalld, zone $zone: $(firewall-cmd --zone="$zone" --list-services) $(firewall-cmd --zone="$zone" --list-ports)"
+fi
+
+if command -v selinuxenabled > /dev/null && selinuxenabled; then
+  step "SELinux: letting Caddy reach the app"
+  # Caddy runs confined as a web server (httpd_t), and the app's port 3000 isn't
+  # a web port, so Caddy needs permission to connect to it.
+  setsebool -P httpd_can_network_connect 1
+  note "Done. (The services themselves start through bash; see config/server/*.service.)"
+fi
+
 step "Configuring Caddy"
 sed "s/FLATLINE_HOST/$host/" "$repo_dir/config/server/Caddyfile" > /etc/caddy/Caddyfile
 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile 2>&1 | tail -n 1
@@ -144,13 +188,6 @@ else
   note "Already set."
 fi
 
-step "Firewall: SSH, HTTP and HTTPS only"
-ufw allow OpenSSH > /dev/null
-ufw allow 80/tcp > /dev/null
-ufw allow 443 > /dev/null
-ufw --force enable > /dev/null
-note "$(ufw status | head -n 1)"
-
 step "SSH keys for GitHub Actions"
 if [[ ! -s /home/deploy/.ssh/authorized_keys ]]; then
   note "Paste the public key GitHub Actions will deploy with (see the README),"
@@ -176,19 +213,32 @@ KbdInteractiveAuthentication no
 PermitRootLogin prohibit-password
 SSHD
   sshd -t
-  systemctl reload ssh
+  # The service is "sshd" on Fedora and "ssh" on Ubuntu.
+  systemctl reload sshd 2> /dev/null || systemctl reload ssh
   note "Password logins are off."
 else
-  note "Skipped: no SSH key found for root or $SUDO_USER, so turning off passwords would lock you out."
+  note "Skipped: no SSH key found for root or ${SUDO_USER:-root}, so turning off passwords would lock you out."
   note "Add your key to ~/.ssh/authorized_keys and run this script again."
 fi
 
 step "Automatic security updates"
-cat > /etc/apt/apt.conf.d/20auto-upgrades <<'APT'
+if [[ "$family" == debian ]]; then
+  cat > /etc/apt/apt.conf.d/20auto-upgrades <<'APT'
 APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
 APT
-systemctl enable --now unattended-upgrades > /dev/null
+  systemctl enable --now unattended-upgrades > /dev/null
+else
+  # dnf5's drop-in folder; the distribution's own automatic.conf is left alone.
+  install -d /etc/dnf/automatic.conf.d
+  cat > /etc/dnf/automatic.conf.d/flatline.conf <<'DNF'
+# Written by Flatline's bin/install.
+[commands]
+upgrade_type = security
+apply_updates = yes
+DNF
+  systemctl enable --now dnf5-automatic.timer > /dev/null 2>&1 || systemctl enable --now dnf-automatic.timer > /dev/null
+fi
 note "On."
 
 step "Logs"

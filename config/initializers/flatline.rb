@@ -5,7 +5,7 @@ module Flatline
 
   # Linked from the User-Agent header that every check sends, so website
   # owners can see what is visiting them.
-  REPOSITORY_URL = ENV.fetch("FLATLINE_REPOSITORY_URL", "https://github.com/antekonjevic/flatline")
+  REPOSITORY_URL = ENV.fetch("FLATLINE_REPOSITORY_URL", "https://github.com/antekonjevic/tools-flatline-monitor")
 
   USER_AGENT = "Flatline/#{VERSION} (uptime monitor; +#{REPOSITORY_URL})"
 
