@@ -21,10 +21,12 @@ step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 note() { printf '    %s\n' "$*"; }
 as_deploy() { sudo -u deploy -H bash -c "cd ~ && $1"; }
 
-# Reads KEY's value from the configuration file.
+# Reads KEY's value from the configuration file, or nothing if it isn't set.
+# grep finds nothing on a first run; "|| true" keeps that from ending the
+# script (set -e with pipefail).
 get_env() {
   [[ -f "$env_file" ]] || return 0
-  grep -E "^$1=" "$env_file" | tail -n 1 | cut -d= -f2- | sed -e "s/^'//" -e "s/'$//"
+  { grep -E "^$1=" "$env_file" || true; } | tail -n 1 | cut -d= -f2- | sed -e "s/^'//" -e "s/'$//"
 }
 
 # Writes KEY='value' to the configuration file, replacing any old line.
