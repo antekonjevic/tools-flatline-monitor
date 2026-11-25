@@ -265,6 +265,6 @@ cat <<DONE
 
     If DEPLOY_HOST is an IP address, use the same address in DEPLOY_KNOWN_HOSTS.
 
-    Then re-run the latest CI run on main in your repo's Actions tab to check
-    that deploys from GitHub work. After that, every push to main deploys.
+    Then push a commit to main (see step 7 in the README) to check that
+    deploys from GitHub work. After that, every push to main deploys.
 DONE

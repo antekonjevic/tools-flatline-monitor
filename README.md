@@ -29,9 +29,13 @@ You need a GitHub account, a fresh **Ubuntu 24.04 or 26.04 LTS** (or **Fedora**)
 
 Fork the repository on GitHub and keep the fork **public**: the server downloads each release straight from GitHub, without credentials. GitHub turns Actions off on new forks, so open your fork's **Actions** tab and enable workflows.
 
-### 2. Point DNS at the server
+### 2. Point DNS at the server and open its ports
 
 Create an `A` record for your subdomain, for example `status.example.com`, pointing at the server's IPv4 address. Add an `AAAA` record too if the server has IPv6. Caddy needs these to get an HTTPS certificate from Let's Encrypt. If your domain has `CAA` records, one of them must allow `letsencrypt.org`.
+
+Keep the records unproxied (*DNS only* in Cloudflare). GitHub Actions deploys over SSH to this name, and a proxy passes on only web traffic.
+
+If your hosting provider has its own firewall in front of the server (Hetzner, AWS, DigitalOcean and others do), open ports 22, 80 and 443 there. The install only sets up the server's own firewall, and Caddy can't get a certificate while 80 and 443 are closed.
 
 ### 3. Log in to the server with an SSH key
 
@@ -48,6 +52,8 @@ ssh-keygen -t ed25519 -f flatline_deploy -N "" -C "flatline deploy"
 You'll paste the public half (`flatline_deploy.pub`) into the install, and the private half (`flatline_deploy`) into GitHub.
 
 ### 5. Install on the server
+
+Fresh servers don't always have `git`. If `git --version` doesn't work, install it first: `sudo apt install git` on Ubuntu, `sudo dnf install git` on Fedora. Then:
 
 ```sh
 git clone https://github.com/<you>/tools-flatline-monitor.git
@@ -74,14 +80,14 @@ When it finishes, the install prints four values. Add each one in your fork unde
 
 | Secret | Value |
 |---|---|
-| `DEPLOY_HOST` | Your domain, for example `status.example.com` |
+| `DEPLOY_HOST` | Your domain, for example `status.example.com`, or the server's IP address |
 | `DEPLOY_USER` | `deploy` |
-| `DEPLOY_KNOWN_HOSTS` | The server's host key line as printed, for example `status.example.com ssh-ed25519 AAAA…` |
+| `DEPLOY_KNOWN_HOSTS` | The server's host key line as printed, for example `status.example.com ssh-ed25519 AAAA…`. If `DEPLOY_HOST` is an IP address, start the line with that address instead of the domain. |
 | `DEPLOY_SSH_KEY` | The private key: the whole contents of `flatline_deploy` |
 
 ### 7. Check it
 
-Open `https://status.example.com` and sign in. To try a deploy from GitHub without a new commit, open the latest **CI** run on `main` in your fork's Actions tab and choose **Re-run all jobs**; the deploy step ends with `Deployed <commit>`. From now on, every push to `main` deploys.
+Open `https://status.example.com` and sign in. Then check that deploys from GitHub work. A new fork has no CI runs yet, so make a commit on `main`: on GitHub, edit any file (README.md will do) and commit it straight to `main`. Or, from a clone on your own computer, run `git commit --allow-empty -m "Test deploy" && git push`. In your fork's Actions tab, the **CI** run's deploy step ends with `Deployed <commit>`. From now on, every push to `main` deploys. To deploy again without a new commit, open the latest CI run on `main` and choose **Re-run all jobs**.
 
 Files on the server:
 
