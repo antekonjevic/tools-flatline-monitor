@@ -14,6 +14,7 @@ Built with Rails 8.1, SQLite and Solid Queue. No Node and no build step.
 
 - [Run your own Flatline](#run-your-own-flatline)
 - [How deploys work](#how-deploys-work)
+- [Updating](#updating)
 - [Resetting the password](#resetting-the-password)
 - [Rolling back](#rolling-back)
 - [Configuration](#configuration)
@@ -23,7 +24,7 @@ Built with Rails 8.1, SQLite and Solid Queue. No Node and no build step.
 
 ## Run your own Flatline
 
-You need a GitHub account, a fresh **Ubuntu 24.04 or 26.04 LTS** (or **Fedora**) server you can reach over SSH, and a (sub)domain whose DNS you control. It takes about 20 minutes, most of it the install compiling Ruby. Every push to your fork's `main` then deploys to your server.
+You need a GitHub account, a fresh **Ubuntu 24.04 or 26.04 LTS** (or **Fedora**) server with at least 1 GB of RAM that you can reach over SSH, and a (sub)domain whose DNS you control. It takes about 20 minutes, most of it the install compiling Ruby. Every push to your fork's `main` then deploys to your server.
 
 ### 1. Fork this repo and turn on Actions
 
@@ -87,7 +88,7 @@ When it finishes, the install prints four values. Add each one in your fork unde
 
 ### 7. Check it
 
-Open `https://status.example.com` and sign in. Then check that deploys from GitHub work. A new fork has no CI runs yet, so make a commit on `main`: on GitHub, edit any file (README.md will do) and commit it straight to `main`. Or, from a clone on your own computer, run `git commit --allow-empty -m "Test deploy" && git push`. In your fork's Actions tab, the **CI** run's deploy step ends with `Deployed <commit>`. From now on, every push to `main` deploys. To deploy again without a new commit, open the latest CI run on `main` and choose **Re-run all jobs**.
+Open `https://status.example.com` and sign in. Then check that deploys from GitHub work: in your fork's **Actions** tab, choose **CI**, then **Run workflow** on `main`. The deploy step ends with `Deployed <commit>`. From now on, every push to `main` deploys.
 
 Files on the server:
 
@@ -101,13 +102,31 @@ Files on the server:
 
 Logs go to the system journal: `journalctl -u flatline-web -u flatline-jobs -f`.
 
+The JSON export under **Import & export** saves only website settings. To keep history too, back up the database. On the server, as the deploy user (`sudo -iu deploy`), run this, which is safe while Flatline runs:
+
+```sh
+sqlite3 ~/flatline/shared/storage/production.sqlite3 ".backup '/home/deploy/flatline-backup.sqlite3'"
+```
+
 ## How deploys work
 
-Every push to `main` runs the tests, RuboCop, Brakeman and the dependency audits. If they pass, GitHub Actions connects to the server over SSH as the `deploy` user and runs `bin/deploy` for that commit. It fetches the commit into a new release folder, links the shared storage and configuration into it, installs gems, precompiles assets, migrates the databases, switches `current` to it and restarts both services. The worker finishes the checks it's running before it stops.
+Every push to `main`, and every manual run from the Actions tab, runs the tests, RuboCop, Brakeman and the dependency audits. If they pass, GitHub Actions connects to the server over SSH as the `deploy` user and runs `bin/deploy` for that commit. It fetches the commit into a new release folder, links the shared storage and configuration into it, installs gems, precompiles assets, migrates the databases, switches `current` to it and restarts both services. The worker finishes the checks it's running before it stops.
 
 Only one deploy runs at a time. If a step fails before the switch, the live release isn't touched; if the new release doesn't answer within 30 seconds, `current` goes back to the previous one.
 
 Without the secrets, the deploy step is skipped, so pull requests and forks without a server still get CI. On a public repo anyone can read the Actions logs; they contain no secrets, and GitHub masks the secret values.
+
+## Updating
+
+To get a new version of Flatline, open your fork on GitHub and choose **Sync fork → Update branch**. That updates your `main`, and the push deploys it. If no CI run starts, run it by hand as in step 7.
+
+Deploys don't change the server's own setup: the systemd services and the Caddy config in `config/server/`. When a new version changes those, run the install again. Update its clone on the server first, because the install deploys the commit that clone is at, and an old clone would put old code live:
+
+```sh
+cd tools-flatline-monitor
+git pull
+sudo bin/install
+```
 
 ## Resetting the password
 

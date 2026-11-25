@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # First-run setup for a fresh Ubuntu (24.04 or 26.04 LTS) or Fedora server.
-# Running it again is safe: it only asks for what isn't set up yet.
+# Running it again is safe: it only asks for what isn't set up yet. It deploys
+# the commit this clone is at, so git pull first.
 #
 #   git clone https://github.com/<you>/tools-flatline-monitor.git && cd tools-flatline-monitor
 #   sudo bin/install
@@ -265,6 +266,6 @@ cat <<DONE
 
     If DEPLOY_HOST is an IP address, use the same address in DEPLOY_KNOWN_HOSTS.
 
-    Then push a commit to main (see step 7 in the README) to check that
-    deploys from GitHub work. After that, every push to main deploys.
+    Then open your repo's Actions tab, choose CI and Run workflow, to check
+    that deploys from GitHub work. After that, every push to main deploys.
 DONE

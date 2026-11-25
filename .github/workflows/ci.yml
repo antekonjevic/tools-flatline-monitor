@@ -4,6 +4,8 @@ on:
   pull_request:
   push:
     branches: [ main ]
+  # A "Run workflow" button in the Actions tab, to deploy without a new commit.
+  workflow_dispatch:
 
 # Read-only token, whatever the repository's default is. Nothing here writes
 # to GitHub.
@@ -87,11 +89,12 @@ jobs:
           RAILS_ENV: test
         run: bin/rails db:test:prepare test
 
-  # Deploys main to the server once every check above has passed. Forks
-  # without the DEPLOY_* secrets skip this step.
+  # Deploys main to the server once every check above has passed, on a push
+  # to main or a manual run on main. Forks without the DEPLOY_* secrets skip
+  # this step.
   deploy:
     needs: [ scan_ruby, scan_js, lint, test ]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     concurrency:
       group: deploy-production
